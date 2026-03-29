@@ -58,7 +58,7 @@ public sealed partial class Cs2ObservabilityPlugin : BasePlugin, IPluginConfig<O
     public override void Load(bool hotReload)
     {
         _exporters.Clear();
-        _exporters.Add(new OpenTelemetryGameEventExporter(Config));
+        _exporters.Add(new OpenTelemetryGameEventExporter(Config.Otlp, Config.Service));
 
         RegisterEventHandlers();
 
@@ -70,7 +70,7 @@ public sealed partial class Cs2ObservabilityPlugin : BasePlugin, IPluginConfig<O
                     exporter.Dispose();
 
                 _exporters.Clear();
-                _exporters.Add(new OpenTelemetryGameEventExporter(Config));
+                _exporters.Add(new OpenTelemetryGameEventExporter(Config.Otlp, Config.Service));
 
                 Server.PrintToConsole("[CS2 Observability] Config reloaded.");
             });

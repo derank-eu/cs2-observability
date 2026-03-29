@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Cs2Observability.Core.Configuration;
 using CounterStrikeSharp.API.Core;
 
 namespace Cs2Observability.Plugin.Configuration;
@@ -13,36 +14,6 @@ public sealed class ObservabilityConfig : BasePluginConfig
 
     [JsonPropertyName("events")]
     public EventsConfig Events { get; set; } = new();
-}
-
-public sealed class OtlpConfig
-{
-    /// <summary>OTLP collector endpoint. Supports gRPC (http://host:4317) and HTTP (http://host:4318).</summary>
-    [JsonPropertyName("endpoint")]
-    public string Endpoint { get; set; } = "http://localhost:4317";
-
-    /// <summary>"grpc" or "http/protobuf"</summary>
-    [JsonPropertyName("protocol")]
-    public string Protocol { get; set; } = "grpc";
-
-    /// <summary>Optional static headers to attach to every OTLP request (e.g. auth tokens).</summary>
-    [JsonPropertyName("headers")]
-    public Dictionary<string, string> Headers { get; set; } = new();
-
-    /// <summary>How long to wait for the collector before timing out, in milliseconds.</summary>
-    [JsonPropertyName("timeout_ms")]
-    public int TimeoutMs { get; set; } = 5000;
-}
-
-public sealed class ServiceConfig
-{
-    /// <summary>Value of the OTel resource attribute service.name.</summary>
-    [JsonPropertyName("name")]
-    public string Name { get; set; } = "cs2-server";
-
-    /// <summary>Arbitrary key/value pairs added as OTel resource attributes (e.g. server.region, server.id).</summary>
-    [JsonPropertyName("attributes")]
-    public Dictionary<string, string> Attributes { get; set; } = new();
 }
 
 /// <summary>

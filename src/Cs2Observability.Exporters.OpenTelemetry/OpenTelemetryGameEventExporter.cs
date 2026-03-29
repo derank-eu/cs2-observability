@@ -5,8 +5,8 @@ using Cs2Observability.Core.Events.Economy;
 using Cs2Observability.Core.Events.Game;
 using Cs2Observability.Core.Events.Player;
 using Cs2Observability.Core.Events.Server;
+using Cs2Observability.Core.Configuration;
 using Cs2Observability.Core.Exporters;
-using Cs2Observability.Plugin.Configuration;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry;
 using OpenTelemetry.Exporter;
@@ -25,14 +25,14 @@ public sealed class OpenTelemetryGameEventExporter : IGameEventExporter, IDispos
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger        _logger;
 
-    public OpenTelemetryGameEventExporter(ObservabilityConfig config)
+    public OpenTelemetryGameEventExporter(OtlpConfig otlp, ServiceConfig service)
     {
         var resourceBuilder = ResourceBuilder.CreateDefault()
-            .AddService(config.Service.Name)
-            .AddAttributes(config.Service.Attributes.Select(kv =>
+            .AddService(service.Name)
+            .AddAttributes(service.Attributes.Select(kv =>
                 new KeyValuePair<string, object>(kv.Key, kv.Value)));
 
-        var protocol = config.Otlp.Protocol.Equals("grpc", StringComparison.OrdinalIgnoreCase)
+        var protocol = otlp.Protocol.Equals("grpc", StringComparison.OrdinalIgnoreCase)
             ? OtlpExportProtocol.Grpc
             : OtlpExportProtocol.HttpProtobuf;
 
@@ -42,14 +42,14 @@ public sealed class OpenTelemetryGameEventExporter : IGameEventExporter, IDispos
             builder.AddOpenTelemetry(logging =>
             {
                 logging.SetResourceBuilder(resourceBuilder);
-                logging.AddOtlpExporter(otlp =>
+                logging.AddOtlpExporter(o =>
                 {
-                    otlp.Endpoint             = new Uri(config.Otlp.Endpoint);
-                    otlp.Protocol             = protocol;
-                    otlp.TimeoutMilliseconds  = config.Otlp.TimeoutMs;
-                    if (config.Otlp.Headers.Count > 0)
-                        otlp.Headers = string.Join(",",
-                            config.Otlp.Headers.Select(kv => $"{kv.Key}={kv.Value}"));
+                    o.Endpoint            = new Uri(otlp.Endpoint);
+                    o.Protocol            = protocol;
+                    o.TimeoutMilliseconds = otlp.TimeoutMs;
+                    if (otlp.Headers.Count > 0)
+                        o.Headers = string.Join(",",
+                            otlp.Headers.Select(kv => $"{kv.Key}={kv.Value}"));
                 });
             });
         });
