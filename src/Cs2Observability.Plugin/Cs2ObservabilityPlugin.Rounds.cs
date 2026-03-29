@@ -54,13 +54,17 @@ public sealed partial class Cs2ObservabilityPlugin
         {
             var duration = DateTimeOffset.UtcNow - _roundStartedAt;
 
+            _lastTScore  = e.TScore;
+            _lastCtScore = e.CtScore;
+            _lastWinner  = (GameTeam)e.Winner;
+
             Dispatch(new RoundEndEvent(
                 RoundNumber:          _currentRound,
                 MapName:              Server.MapName,
-                WinnerTeam:           (GameTeam)e.Winner,
+                WinnerTeam:           _lastWinner,
                 Reason:               RoundEndReasonMapper.Map(e.Reason),
-                TerroristScore:       e.TScore,
-                CounterTerroristScore: e.CtScore,
+                TerroristScore:       _lastTScore,
+                CounterTerroristScore: _lastCtScore,
                 RoundDuration:        duration,
                 OccurredAt:           DateTimeOffset.UtcNow));
 
@@ -69,16 +73,10 @@ public sealed partial class Cs2ObservabilityPlugin
 
         RegisterEventHandler<EventCsIntermission>((e, _) =>
         {
-            var players = Utilities.GetPlayers().Where(p => p.IsValid && !p.IsBot).ToList();
-            var tScore  = players.FirstOrDefault(p => p.TeamNum == (byte)CsTeam.Terrorist)
-                              ?.ActionTrackingServices?.MatchStats.Score ?? 0;
-            var ctScore = players.FirstOrDefault(p => p.TeamNum == (byte)CsTeam.CounterTerrorist)
-                              ?.ActionTrackingServices?.MatchStats.Score ?? 0;
-
             Dispatch(new HalftimeEvent(
                 MapName:              Server.MapName,
-                TerroristScore:       tScore,
-                CounterTerroristScore: ctScore,
+                TerroristScore:       _lastTScore,
+                CounterTerroristScore: _lastCtScore,
                 OccurredAt:           DateTimeOffset.UtcNow));
 
             return HookResult.Continue;
@@ -88,9 +86,9 @@ public sealed partial class Cs2ObservabilityPlugin
         {
             Dispatch(new MatchEndEvent(
                 MapName:              Server.MapName,
-                WinnerTeam:           (GameTeam)e.FinalEvent,
-                TerroristScore:       e.FunFactToken is not null ? 0 : 0, // read from team score below
-                CounterTerroristScore: 0,
+                WinnerTeam:           _lastWinner,
+                TerroristScore:       _lastTScore,
+                CounterTerroristScore: _lastCtScore,
                 MatchDuration:        DateTimeOffset.UtcNow - _matchStartedAt,
                 OccurredAt:           DateTimeOffset.UtcNow));
 
