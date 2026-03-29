@@ -56,4 +56,14 @@ COPY docker/cs2/plugin-config/ \
 
 RUN chown -R steam:steam "${GAME_ROOT}/addons/"
 
+# ── Entrypoint wrapper — tees stdout/stderr to shared log volume ─────────────
+COPY docker/cs2/entrypoint-wrapper.sh /entrypoint-wrapper.sh
+RUN chmod +x /entrypoint-wrapper.sh
+
 USER steam
+
+# Override the base image entrypoint with our wrapper.
+# CMD passes the original startup script as arguments to the wrapper.
+# joedwards32/cs2 starts the server via /home/steam/start.sh.
+ENTRYPOINT ["/entrypoint-wrapper.sh"]
+CMD ["bash", "/home/steam/start.sh"]
