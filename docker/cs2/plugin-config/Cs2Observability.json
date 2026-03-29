@@ -1,0 +1,25 @@
+{
+  "otlp": {
+    "endpoint": "http://otel-collector:4317",
+    "protocol": "grpc",
+    "headers": {},
+    "timeout_ms": 5000
+  },
+  "service": {
+    "name": "cs2-server",
+    "attributes": {
+      "server.region": "local",
+      "deployment.environment": "development"
+    }
+  },
+  "events": {
+    "player": true,
+    "kills": true,
+    "rounds": true,
+    "bomb": true,
+    "economy": true,
+    "chat": true,
+    "server": true
+  },
+  "Version": 1
+}

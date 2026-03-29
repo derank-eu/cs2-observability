@@ -1,0 +1,35 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+
+  # Promote OTel resource attributes (service.name, server.region, etc.)
+  # to Loki stream labels so they are indexed and filterable.
+  resource:
+    attributes:
+      - action: insert
+        key: loki.resource.labels
+        value: service.name, deployment.environment, server.region
+
+exporters:
+  loki:
+    endpoint: http://loki:3100/loki/api/v1/push
+
+  # Log every received record to the collector's own stdout for debugging.
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    logs:
+      receivers:  [otlp]
+      processors: [resource, batch]
+      exporters:  [loki, debug]
