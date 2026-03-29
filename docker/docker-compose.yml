@@ -19,6 +19,40 @@ services:
       - "${CS2_PORT:-27015}:27015/tcp"
     volumes:
       - cs2_data:/home/steam/cs2
+    # Ship all stdout/stderr to Fluent Bit via the Docker fluentd log driver.
+    # The driver connects from the Docker daemon to localhost:24224 (host-side port
+    # exposed by the fluent-bit service). fluentd-async prevents CS2 startup from
+    # blocking if Fluent Bit is not yet ready.
+    # NOTE: on Docker Desktop (Mac/Windows) change fluentd-address to
+    #       host.docker.internal:24224
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address:           "localhost:24224"
+        tag:                       "cs2.server"
+        fluentd-async:             "true"
+        fluentd-retry-wait:        "1s"
+        fluentd-max-retries:       "30"
+        fluentd-sub-second-precision: "true"
+    depends_on:
+      otel-collector:
+        condition: service_started
+      fluent-bit:
+        condition: service_started
+    networks:
+      - observability
+
+  # ── Fluent Bit — collects CS2 stdout/stderr via fluentd log driver ──────────
+  fluent-bit:
+    image: fluent/fluent-bit:3.0.0
+    restart: unless-stopped
+    volumes:
+      - ./fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+    # Port 24224 must be exposed on the host so the Docker fluentd log driver
+    # (which runs in the Docker daemon process, outside the compose network) can reach it.
+    ports:
+      - "24224:24224"
+      - "24224:24224/udp"
     depends_on:
       otel-collector:
         condition: service_started
