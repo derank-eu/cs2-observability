@@ -1,0 +1,12 @@
+using Cs2Observability.Core.Events;
+using Cs2Observability.Core.Shared;
+
+namespace Cs2Observability.Core.Events.Bomb;
+
+public sealed record BombDefuseStartEvent(
+    PlayerInfo Player,
+    bool HasKit,
+    string MapName,
+    int RoundNumber,
+    DateTimeOffset OccurredAt
+) : IGameEvent;
