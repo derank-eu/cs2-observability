@@ -10,5 +10,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Cs2Observability.Core\Cs2Observability.Core.csproj" />
+    <ProjectReference Include="..\Cs2Observability.Exporters.OpenTelemetry\Cs2Observability.Exporters.OpenTelemetry.csproj" />
   </ItemGroup>
 </Project>
