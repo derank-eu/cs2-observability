@@ -35,6 +35,10 @@ public sealed partial class Cs2ObservabilityPlugin : BasePlugin, IPluginConfig<O
     internal int             _currentRound   = 0;
     internal DateTimeOffset  _roundStartedAt = DateTimeOffset.UtcNow;
     internal DateTimeOffset  _matchStartedAt = DateTimeOffset.UtcNow;
+    /// <summary>Scores as of the last RoundEnd — used by Halftime and MatchEnd where the engine event lacks them.</summary>
+    internal int             _lastTScore     = 0;
+    internal int             _lastCtScore    = 0;
+    internal GameTeam        _lastWinner     = GameTeam.None;
 
     // ── Per-player session state ──────────────────────────────────────────────
     /// <summary>SteamID64 → time the player connected (for SessionDuration calculation).</summary>
