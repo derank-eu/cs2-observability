@@ -19,6 +19,23 @@ services:
       - "${CS2_PORT:-27015}:27015/tcp"
     volumes:
       - cs2_data:/home/steam/cs2
+      - cs2_logs:/logs/cs2           # entrypoint wrapper writes server.log here
+    depends_on:
+      otel-collector:
+        condition: service_started
+    networks:
+      - observability
+
+  # ── Fluent Bit sidecar — tails CS2 stdout/stderr, forwards to OTel ──────────
+  # Reads /logs/cs2/server.log from the shared cs2_logs volume (written by the
+  # CS2 entrypoint wrapper). No host ports needed — all traffic stays on the
+  # internal compose network. `docker logs cs2` still works normally.
+  fluent-bit:
+    image: fluent/fluent-bit:3.0.0
+    restart: unless-stopped
+    volumes:
+      - ./fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - cs2_logs:/logs/cs2:ro        # read-only view of the same log file
     depends_on:
       otel-collector:
         condition: service_started
@@ -34,7 +51,7 @@ services:
       - ./otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
     ports:
       - "4317:4317"    # OTLP gRPC  (plugin → collector)
-      - "4318:4318"    # OTLP HTTP  (alternative)
+      - "4318:4318"    # OTLP HTTP  (Fluent Bit → collector)
     depends_on:
       - loki
     networks:
@@ -70,6 +87,7 @@ services:
 
 volumes:
   cs2_data:
+  cs2_logs:     # shared between cs2 (rw) and fluent-bit (ro)
   grafana_data:
 
 networks:
