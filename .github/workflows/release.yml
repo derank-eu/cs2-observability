@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Full version string, e.g. v1.2.3 or v1.2.3-snapshot.20240101.abc1234'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark the GitHub release as a pre-release'
+        required: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & publish release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore cs2-observability.sln
+
+      - name: Publish plugin
+        run: |
+          dotnet publish src/Cs2Observability.Plugin/Cs2Observability.Plugin.csproj \
+            --configuration Release \
+            --output ./publish \
+            --no-self-contained
+
+      - name: Assemble release package
+        run: |
+          VERSION="${{ inputs.version }}"
+          ARTIFACT="cs2-observability-${VERSION}"
+          PLUGIN_DIR="${ARTIFACT}/addons/counterstrikesharp/plugins/Cs2Observability.Plugin"
+          CONFIG_DIR="${ARTIFACT}/addons/counterstrikesharp/configs/plugins/Cs2Observability.Plugin"
+
+          mkdir -p "$PLUGIN_DIR" "$CONFIG_DIR"
+
+          # Plugin binaries
+          cp ./publish/*.dll   "$PLUGIN_DIR/"
+          cp ./publish/*.pdb   "$PLUGIN_DIR/" 2>/dev/null || true
+          cp ./publish/*.json  "$PLUGIN_DIR/"
+
+          # Default config template (endpoint points to localhost — adjust to your collector)
+          cp .github/release-config.json "${CONFIG_DIR}/Cs2Observability.Plugin.json"
+
+          zip -r "${ARTIFACT}.zip" "$ARTIFACT"
+          echo "ARTIFACT=${ARTIFACT}.zip" >> "$GITHUB_ENV"
+
+      - name: Create tag
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${{ inputs.version }}" -m "Release ${{ inputs.version }}"
+          git push origin "${{ inputs.version }}"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRERELEASE_FLAG=""
+          if [ "${{ inputs.prerelease }}" = "true" ]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+
+          gh release create "${{ inputs.version }}" \
+            --title "${{ inputs.version }}" \
+            --generate-notes \
+            $PRERELEASE_FLAG \
+            "${{ env.ARTIFACT }}"

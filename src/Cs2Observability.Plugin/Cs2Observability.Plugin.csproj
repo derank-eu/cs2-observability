@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>12</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CounterStrikeSharp.API" Version="*" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Cs2Observability.Core\Cs2Observability.Core.csproj" />
+    <ProjectReference Include="..\Cs2Observability.Exporters.OpenTelemetry\Cs2Observability.Exporters.OpenTelemetry.csproj" />
+  </ItemGroup>
+
+  <!--
+    CounterStrikeSharp bundles its own .NET runtime which already ships all
+    Microsoft.Extensions.* assemblies. Removing them from the publish output
+    avoids version conflicts when CSS upgrades its embedded runtime.
+    OTel only needs them for compilation — the CSS runtime provides them at load time.
+  -->
+  <Target Name="ExcludeFrameworkAssembliesFromPublish" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="$([System.String]::Copy('%(ResolvedFileToPublish.Filename)').StartsWith('Microsoft.Extensions.'))" />
+    </ItemGroup>
+  </Target>
+
+</Project>

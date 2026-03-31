@@ -1,0 +1,83 @@
+name: Version
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version bump type'
+        required: true
+        default: snapshot
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
+          - snapshot
+
+jobs:
+  calculate-version:
+    name: Calculate version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate version
+        id: version
+        run: |
+          BUMP_TYPE="${{ github.event.inputs.bump_type || 'snapshot' }}"
+
+          # Find the latest stable semver tag (no pre-release suffix)
+          LATEST_TAG=$(git tag --list 'v*' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sort -V \
+            | tail -1)
+
+          if [ -z "$LATEST_TAG" ]; then
+            LATEST_TAG="v0.0.0"
+          fi
+
+          echo "Latest stable tag: $LATEST_TAG"
+
+          MAJOR=$(echo "$LATEST_TAG" | sed 's/^v//' | cut -d. -f1)
+          MINOR=$(echo "$LATEST_TAG" | cut -d. -f2)
+          PATCH=$(echo "$LATEST_TAG" | cut -d. -f3)
+
+          case "$BUMP_TYPE" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+            snapshot) ;; # No semver bump — append pre-release suffix below
+          esac
+
+          BASE_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+
+          if [ "$BUMP_TYPE" = "snapshot" ]; then
+            DATE=$(date -u +%Y%m%d)
+            SHA=$(git rev-parse --short HEAD)
+            VERSION="${BASE_VERSION}-snapshot.${DATE}.${SHA}"
+            PRERELEASE="true"
+          else
+            VERSION="$BASE_VERSION"
+            PRERELEASE="false"
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "Computed version: $VERSION (prerelease=$PRERELEASE)"
+
+  release:
+    name: Release
+    needs: calculate-version
+    uses: ./.github/workflows/release.yml
+    permissions:
+      contents: write
+    with:
+      version: ${{ needs.calculate-version.outputs.version }}
+      prerelease: ${{ needs.calculate-version.outputs.prerelease == 'true' }}

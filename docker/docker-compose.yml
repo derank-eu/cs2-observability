@@ -1,0 +1,95 @@
+services:
+
+  # ── CS2 dedicated server with Metamod + CounterStrikeSharp + plugin ─────────
+  cs2:
+    build:
+      context: ..
+      dockerfile: docker/cs2/Dockerfile
+    restart: unless-stopped
+    environment:
+      SRCDS_TOKEN:    ${SRCDS_TOKEN:-}          # Steam GSLT — required for online servers
+      CS2_SERVERNAME: ${CS2_SERVERNAME:-CS2 Observability Dev}
+      CS2_MAXPLAYERS: ${CS2_MAXPLAYERS:-10}
+      CS2_STARTMAP:   ${CS2_STARTMAP:-de_dust2}
+      CS2_GAMETYPE:   ${CS2_GAMETYPE:-0}        # 0 = classic
+      CS2_GAMEMODE:   ${CS2_GAMEMODE:-1}        # 1 = competitive
+      CS2_RCONPW:     ${CS2_RCONPW:-changeme}
+    ports:
+      - "${CS2_PORT:-27015}:27015/udp"
+      - "${CS2_PORT:-27015}:27015/tcp"
+    volumes:
+      - cs2_data:/home/steam/cs2
+      - cs2_logs:/logs/cs2           # entrypoint wrapper writes server.log here
+    depends_on:
+      otel-collector:
+        condition: service_started
+    networks:
+      - observability
+
+  # ── Fluent Bit sidecar — tails CS2 stdout/stderr, forwards to OTel ──────────
+  # Reads /logs/cs2/server.log from the shared cs2_logs volume (written by the
+  # CS2 entrypoint wrapper). No host ports needed — all traffic stays on the
+  # internal compose network. `docker logs cs2` still works normally.
+  fluent-bit:
+    image: fluent/fluent-bit:3.0.0
+    restart: unless-stopped
+    volumes:
+      - ./fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - cs2_logs:/logs/cs2:ro        # read-only view of the same log file
+    depends_on:
+      otel-collector:
+        condition: service_started
+    networks:
+      - observability
+
+  # ── OpenTelemetry Collector — receives OTLP, fans out to backends ────────────
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.102.0
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"    # OTLP gRPC  (plugin → collector)
+      - "4318:4318"    # OTLP HTTP  (Fluent Bit → collector)
+    depends_on:
+      - loki
+    networks:
+      - observability
+
+  # ── Loki — log storage ───────────────────────────────────────────────────────
+  loki:
+    image: grafana/loki:3.0.0
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    networks:
+      - observability
+
+  # ── Grafana — dashboards ─────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:11.0.0
+    restart: unless-stopped
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED:  "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - loki
+    networks:
+      - observability
+
+volumes:
+  cs2_data:
+  cs2_logs:     # shared between cs2 (rw) and fluent-bit (ro)
+  grafana_data:
+
+networks:
+  observability:
+    driver: bridge

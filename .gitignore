@@ -1,0 +1,10 @@
+# .NET build artifacts
+src/**/bin/
+src/**/obj/
+
+# IDE
+.idea/
+
+# Secrets
+docker/.env
+docker-cloud/.env
