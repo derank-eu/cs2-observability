@@ -31,6 +31,12 @@ public sealed class OpenTelemetryGameEventExporter : IGameEventExporter, IDispos
     private readonly Meter          _meter;
     private readonly OtelDiagnosticListener _diagnostics = new();
 
+    /// <summary>
+    /// Stamped on every log record as structured attributes so they appear in the log body
+    /// regardless of how the collector handles resource attributes.
+    /// </summary>
+    private readonly IReadOnlyDictionary<string, object> _globalLogAttrs;
+
     // ---- Metrics instruments -----------------------------------------------
     private readonly Counter<long>     _kills;
     private readonly Counter<long>     _playerConnects;
@@ -45,6 +51,8 @@ public sealed class OpenTelemetryGameEventExporter : IGameEventExporter, IDispos
 
     public OpenTelemetryGameEventExporter(OtlpConfig otlp, ServiceConfig service)
     {
+        _globalLogAttrs = service.Attributes.ToDictionary(kv => kv.Key, kv => (object)kv.Value);
+
         var resourceBuilder = ResourceBuilder.CreateDefault()
             .AddService(service.Name)
             .AddAttributes(service.Attributes.Select(kv =>
@@ -54,23 +62,38 @@ public sealed class OpenTelemetryGameEventExporter : IGameEventExporter, IDispos
             ? OtlpExportProtocol.Grpc
             : OtlpExportProtocol.HttpProtobuf;
 
+        // For http/protobuf the .NET OTel SDK uses the Endpoint URI as-is when set
+        // explicitly, so we must include the signal-specific path ourselves.
+        var baseEndpoint = otlp.Endpoint.TrimEnd('/');
+        Uri LogsEndpoint()    => protocol == OtlpExportProtocol.Grpc
+            ? new Uri(baseEndpoint)
+            : new Uri(baseEndpoint + "/v1/logs");
+        Uri MetricsEndpoint() => protocol == OtlpExportProtocol.Grpc
+            ? new Uri(baseEndpoint)
+            : new Uri(baseEndpoint + "/v1/metrics");
+
+        var headers = otlp.Headers.Count > 0
+            ? string.Join(",", otlp.Headers.Select(kv => $"{kv.Key}={kv.Value}"))
+            : null;
+
         _loggerFactory = LoggerFactory.Create(builder =>
         {
             builder.SetMinimumLevel(LogLevel.Debug);
             builder.AddOpenTelemetry(logging =>
             {
                 logging.SetResourceBuilder(resourceBuilder);
+                logging.IncludeFormattedMessage = true;
+                logging.IncludeScopes           = true;
                 // Simple processor: export is synchronous — any error surfaces immediately
                 // instead of being silently dropped by the background batch thread.
                 logging.AddOtlpExporter((otelOtlp, processorOptions) =>
                 {
-                    otelOtlp.Endpoint            = new Uri(otlp.Endpoint);
+                    otelOtlp.Endpoint            = LogsEndpoint();
                     otelOtlp.Protocol            = protocol;
                     otelOtlp.TimeoutMilliseconds = otlp.TimeoutMs;
-                    if (otlp.Headers.Count > 0)
-                        otelOtlp.Headers = string.Join(",",
-                            otlp.Headers.Select(kv => $"{kv.Key}={kv.Value}"));
-                    processorOptions.ExportProcessorType = ExportProcessorType.Simple;
+                    if (headers is not null)
+                        otelOtlp.Headers = headers;
+                    processorOptions.ExportProcessorType = ExportProcessorType.Batch;
                 });
             });
         });
@@ -81,12 +104,11 @@ public sealed class OpenTelemetryGameEventExporter : IGameEventExporter, IDispos
             .AddMeter("cs2.events")
             .AddOtlpExporter(otelOtlp =>
             {
-                otelOtlp.Endpoint            = new Uri(otlp.Endpoint);
+                otelOtlp.Endpoint            = MetricsEndpoint();
                 otelOtlp.Protocol            = protocol;
                 otelOtlp.TimeoutMilliseconds = otlp.TimeoutMs;
-                if (otlp.Headers.Count > 0)
-                    otelOtlp.Headers = string.Join(",",
-                        otlp.Headers.Select(kv => $"{kv.Key}={kv.Value}"));
+                if (headers is not null)
+                    otelOtlp.Headers = headers;
             })
             .Build()!;
 
@@ -112,6 +134,7 @@ public sealed class OpenTelemetryGameEventExporter : IGameEventExporter, IDispos
 
     private void Log(IGameEvent evt)
     {
+        using var scope = _logger.BeginScope(_globalLogAttrs);
         switch (evt)
         {
             // ---- Player ----------------------------------------------------------------------------------------------------------------
@@ -167,20 +190,22 @@ public sealed class OpenTelemetryGameEventExporter : IGameEventExporter, IDispos
             // ---- Kills ------------------------------------------------------------------------------------------------------------------
             case KillEvent e:
                 _logger.LogInformation(
-                    "kill {AttackerSteamId} {AttackerName} {VictimSteamId} {VictimName} " +
+                    "kill {AttackerSteamId} {AttackerName} {AttackerTeam} {VictimSteamId} {VictimName} {VictimTeam} " +
                     "{Weapon} {IsHeadshot} {IsPenetration} {IsNoscope} {IsThroughSmoke} " +
                     "{IsAttackerBlind} {DistanceUnits} {IsTeamKill} {IsSuicide} {MapName} {RoundNumber}",
-                    e.Attacker.SteamId, e.Attacker.PlayerName,
-                    e.Victim.SteamId,   e.Victim.PlayerName,
+                    e.Attacker.SteamId, e.Attacker.PlayerName, e.Attacker.Team,
+                    e.Victim.SteamId,   e.Victim.PlayerName,   e.Victim.Team,
                     e.Weapon, e.IsHeadshot, e.IsPenetration, e.IsNoscope,
                     e.IsThroughSmoke, e.IsAttackerBlind, e.DistanceUnits,
                     e.IsTeamKill, e.IsSuicide, e.MapName, e.RoundNumber);
                 _kills.Add(1,
-                    new KeyValuePair<string, object?>("weapon",      e.Weapon),
-                    new KeyValuePair<string, object?>("is_headshot", e.IsHeadshot),
-                    new KeyValuePair<string, object?>("is_teamkill", e.IsTeamKill),
-                    new KeyValuePair<string, object?>("is_suicide",  e.IsSuicide),
-                    new KeyValuePair<string, object?>("map",         e.MapName));
+                    new KeyValuePair<string, object?>("weapon",        e.Weapon),
+                    new KeyValuePair<string, object?>("is_headshot",   e.IsHeadshot),
+                    new KeyValuePair<string, object?>("is_teamkill",   e.IsTeamKill),
+                    new KeyValuePair<string, object?>("is_suicide",    e.IsSuicide),
+                    new KeyValuePair<string, object?>("map",           e.MapName),
+                    new KeyValuePair<string, object?>("attacker_team", e.Attacker.Team.ToString()),
+                    new KeyValuePair<string, object?>("victim_team",   e.Victim.Team.ToString()));
                 break;
 
             // ---- Rounds / Match ------------------------------------------------------------------------------------------------

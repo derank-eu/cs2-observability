@@ -32,9 +32,9 @@ public sealed partial class Cs2ObservabilityPlugin
             _currentRound++;
             _roundStartedAt = DateTimeOffset.UtcNow;
 
-            var players     = Utilities.GetPlayers().Where(p => p.IsValid && !p.IsBot).ToList();
-            var tCount      = players.Count(p => p.TeamNum == (byte)CsTeam.Terrorist);
-            var ctCount     = players.Count(p => p.TeamNum == (byte)CsTeam.CounterTerrorist);
+            var players = Utilities.GetPlayers().Where(p => p.IsValid && !p.IsBot).ToList();
+            var tCount  = players.Count(p => p.TeamNum == (byte)CsTeam.Terrorist);
+            var ctCount = players.Count(p => p.TeamNum == (byte)CsTeam.CounterTerrorist);
 
             Dispatch(new RoundStartEvent(
                 RoundNumber:          _currentRound,
@@ -45,7 +45,7 @@ public sealed partial class Cs2ObservabilityPlugin
                 OccurredAt:           _roundStartedAt));
 
             if (Config.Events.Economy)
-                DispatchEconomySnapshot();
+                DispatchEconomySnapshot(players);
 
             return HookResult.Continue;
         });
@@ -97,10 +97,10 @@ public sealed partial class Cs2ObservabilityPlugin
         });
     }
 
-    private void DispatchEconomySnapshot()
+    private void DispatchEconomySnapshot(List<CCSPlayerController> players)
     {
-        var players = Utilities.GetPlayers()
-            .Where(p => p.IsValid && !p.IsBot && p.InGameMoneyServices is not null)
+        players = players
+            .Where(p => p.InGameMoneyServices is not null)
             .ToList();
 
         static TeamEconomyInfo BuildTeamInfo(IEnumerable<CCSPlayerController> players, GameTeam team)

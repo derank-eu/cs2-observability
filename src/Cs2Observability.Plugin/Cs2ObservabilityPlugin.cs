@@ -6,6 +6,7 @@ using Cs2Observability.Exporters.OpenTelemetry;
 using Cs2Observability.Plugin.Configuration;
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
+using CounterStrikeSharp.API.Modules.Admin;
 using CounterStrikeSharp.API.Modules.Commands;
 using CounterStrikeSharp.API.Modules.Cvars;
 
@@ -58,6 +59,18 @@ public sealed partial class Cs2ObservabilityPlugin : BasePlugin, IPluginConfig<O
     public override void Load(bool hotReload)
     {
         _exporters.Clear();
+
+        // Stamp server-level resource attributes derived from the runtime environment.
+        // CVar-sourced attributes are only written when non-empty to avoid polluting the resource with blank labels.
+        var hostname  = ConVar.Find("hostname")?.StringValue;
+        var svTags    = ConVar.Find("sv_tags")?.StringValue;
+        var port      = ConVar.Find("hostport")?.GetPrimitiveValue<int>() ?? 0;
+        if (!string.IsNullOrEmpty(hostname)) Config.Service.Attributes["server.name"] = hostname;
+        if (!string.IsNullOrEmpty(svTags))   Config.Service.Attributes["server.tags"] = svTags;
+        Config.Service.Attributes["server.port"] = port.ToString();
+        Config.Service.Attributes["host.name"]   = Environment.MachineName;
+        Config.Service.Attributes["process.pid"] = Environment.ProcessId.ToString();
+
         var otelExporter = new OpenTelemetryGameEventExporter(Config.Otlp, Config.Service);
         otelExporter.AttachConsoleErrorSink(Server.PrintToConsole);
         _exporters.Add(otelExporter);
@@ -75,6 +88,27 @@ public sealed partial class Cs2ObservabilityPlugin : BasePlugin, IPluginConfig<O
                 _exporters.Add(new OpenTelemetryGameEventExporter(Config.Otlp, Config.Service));
 
                 Server.PrintToConsole("[CS2 Observability] Config reloaded.");
+            });
+
+        AddCommand("css_observability_envvars",
+            "Print all server environment variables (admin only)",
+            (player, command) =>
+            {
+                // null player = server console / RCON — always allowed.
+                if (player != null && !AdminManager.PlayerHasPermissions(player, "@css/root"))
+                {
+                    command.ReplyToCommand("[CS2 Observability] You do not have permission to run this command.");
+                    return;
+                }
+
+                var vars = Environment.GetEnvironmentVariables()
+                    .Cast<System.Collections.DictionaryEntry>()
+                    .OrderBy(e => (string)e.Key!)
+                    .ToList();
+
+                command.ReplyToCommand($"[CS2 Observability] {vars.Count} environment variables:");
+                foreach (var entry in vars)
+                    command.ReplyToCommand($"  {entry.Key}={entry.Value}");
             });
 
         Dispatch(new PluginStartupEvent(
@@ -101,12 +135,12 @@ public sealed partial class Cs2ObservabilityPlugin : BasePlugin, IPluginConfig<O
     {
         foreach (var exporter in _exporters)
         {
-            _ = exporter.ExportAsync(evt).ContinueWith(t =>
-            {
-                if (t.IsFaulted)
+            var task = exporter.ExportAsync(evt);
+            if (!task.IsCompletedSuccessfully)
+                _ = task.ContinueWith(t =>
                     Server.PrintToConsole(
-                        $"[CS2 Observability] Export error ({exporter.GetType().Name}): {t.Exception?.GetBaseException().Message}");
-            }, TaskContinuationOptions.OnlyOnFaulted);
+                        $"[CS2 Observability] Export error ({exporter.GetType().Name}): {t.Exception?.GetBaseException().Message}"),
+                    TaskContinuationOptions.OnlyOnFaulted);
         }
     }
 
