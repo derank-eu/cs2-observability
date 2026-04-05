@@ -41,19 +41,16 @@ jobs:
           VERSION="${{ inputs.version }}"
           ARTIFACT="cs2-observability-${VERSION}"
           PLUGIN_DIR="${ARTIFACT}/addons/counterstrikesharp/plugins/Cs2Observability.Plugin"
-          CONFIG_DIR="${ARTIFACT}/addons/counterstrikesharp/configs/plugins/Cs2Observability.Plugin"
 
-          mkdir -p "$PLUGIN_DIR" "$CONFIG_DIR"
+          mkdir -p "$PLUGIN_DIR"
 
           # Plugin binaries
           cp ./publish/*.dll   "$PLUGIN_DIR/"
           cp ./publish/*.pdb   "$PLUGIN_DIR/" 2>/dev/null || true
           cp ./publish/*.json  "$PLUGIN_DIR/"
 
-          # Default config template (endpoint points to localhost — adjust to your collector)
-          cp .github/release-config.json "${CONFIG_DIR}/Cs2Observability.Plugin.json"
-
           zip -r "${ARTIFACT}.zip" "$ARTIFACT"
+          cp .github/release-config.json "Cs2Observability.Plugin.json.example"
           echo "ARTIFACT=${ARTIFACT}.zip" >> "$GITHUB_ENV"
 
       - name: Create tag
@@ -76,4 +73,5 @@ jobs:
             --title "${{ inputs.version }}" \
             --generate-notes \
             $PRERELEASE_FLAG \
-            "${{ env.ARTIFACT }}"
+            "${{ env.ARTIFACT }}" \
+            "Cs2Observability.Plugin.json.example"

@@ -402,6 +402,7 @@ public sealed class OpenTelemetryGameEventExporter : IGameEventExporter, IDispos
 
         protected override void OnEventWritten(EventWrittenEventArgs e)
         {
+            if (e.EventName == "MetricInstrumentIgnored") return;
             var msg = $"[CS2 Observability] OTel SDK [{e.EventSource.Name}/{e.EventName}]: " +
                       string.Join(" | ", e.Payload is { } p ? p : Enumerable.Empty<object?>());
             OnError?.Invoke(msg);
