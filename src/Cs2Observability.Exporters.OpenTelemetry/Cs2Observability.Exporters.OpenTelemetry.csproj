@@ -6,8 +6,12 @@
     <LangVersion>12</LangVersion>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="OpenTelemetry" Version="1.*" />
-    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.*" />
+    <!-- Pinned to 1.9.0: last version compatible with System.Diagnostics.DiagnosticSource 8.x
+         shipped by CounterStrikeSharp's .NET 8 runtime. Version 1.10.0+ requires >= 9.0.0
+         which causes "InstrumentPublished does not have an implementation" crashes for other
+         plugins (e.g. MatchZy) loaded in the same process. -->
+    <PackageReference Include="OpenTelemetry" Version="1.9.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.9.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Cs2Observability.Core\Cs2Observability.Core.csproj" />
