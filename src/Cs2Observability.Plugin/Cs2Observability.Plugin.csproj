@@ -14,15 +14,18 @@
   </ItemGroup>
 
   <!--
-    CounterStrikeSharp bundles its own .NET runtime which already ships all
-    Microsoft.Extensions.* assemblies. Removing them from the publish output
-    avoids version conflicts when CSS upgrades its embedded runtime.
-    OTel only needs them for compilation — the CSS runtime provides them at load time.
+    CounterStrikeSharp bundles its own .NET runtime which already ships
+    Microsoft.Extensions.* and System.Diagnostics.* assemblies. Removing them
+    from the publish output avoids version conflicts that crash other plugins
+    (e.g. MatchZy). OTel only needs them for compilation — the CSS runtime
+    provides them at load time.
   -->
   <Target Name="ExcludeFrameworkAssembliesFromPublish" AfterTargets="ComputeFilesToPublish">
     <ItemGroup>
       <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
         Condition="$([System.String]::Copy('%(ResolvedFileToPublish.Filename)').StartsWith('Microsoft.Extensions.'))" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="$([System.String]::Copy('%(ResolvedFileToPublish.Filename)').StartsWith('System.Diagnostics.DiagnosticSource'))" />
     </ItemGroup>
   </Target>
 
